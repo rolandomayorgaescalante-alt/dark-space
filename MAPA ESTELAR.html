@@ -1,0 +1,1039 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#070a15">
+  <meta name="description" content="Explora el cielo con un mapa interactivo basado en el catálogo astronómico HYG v4.1.">
+  <title>Mapa estelar — SPHEREx Explorer</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #070a15;
+      --panel: rgba(15, 20, 36, .92);
+      --panel-light: #11182a;
+      --line: rgba(162, 181, 220, .16);
+      --text: #eef2ff;
+      --muted: #9aa8c2;
+      --blue: #84d9ff;
+      --violet: #aa9bff;
+      --gold: #f3cb81;
+      --green: #94e5c4;
+      --sans: "Segoe UI", "Helvetica Neue", sans-serif;
+      --mono: "Cascadia Code", Consolas, monospace;
+    }
+
+    * { box-sizing: border-box; }
+    html, body { min-width: 320px; min-height: 100%; margin: 0; }
+    body {
+      overflow: hidden;
+      background:
+        radial-gradient(ellipse at 72% 45%, rgba(39, 51, 106, .24), transparent 49%),
+        radial-gradient(ellipse at 16% 83%, rgba(37, 91, 120, .12), transparent 36%),
+        var(--bg);
+      color: var(--text);
+      font: 14px/1.5 var(--sans);
+    }
+    button, input, select { font: inherit; }
+    button, a, select, input { -webkit-tap-highlight-color: transparent; }
+    button { color: inherit; }
+    a { color: inherit; text-decoration: none; }
+    button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible, canvas:focus-visible {
+      outline: 2px solid var(--blue);
+      outline-offset: 3px;
+    }
+    .app { display: flex; width: 100%; height: 100svh; min-height: 520px; flex-direction: column; }
+    .topbar {
+      z-index: 3;
+      display: flex;
+      min-height: 66px;
+      align-items: center;
+      justify-content: space-between;
+      gap: 18px;
+      padding: 0 25px;
+      border-bottom: 1px solid var(--line);
+      background: rgba(7, 10, 21, .86);
+      backdrop-filter: blur(18px);
+    }
+    .brand { display: flex; min-width: 0; align-items: center; gap: 12px; }
+    .brand-symbol {
+      display: grid;
+      width: 34px;
+      height: 34px;
+      flex: 0 0 34px;
+      place-items: center;
+      border: 1px solid rgba(132, 217, 255, .46);
+      border-radius: 50%;
+      color: var(--blue);
+      box-shadow: inset 0 0 15px rgba(132, 217, 255, .1), 0 0 19px rgba(132, 217, 255, .1);
+    }
+    .brand-symbol svg { width: 19px; height: 19px; }
+    .brand-title { font-size: 13px; font-weight: 700; letter-spacing: .19em; }
+    .brand-kicker { color: var(--muted); font: 9px var(--mono); letter-spacing: .1em; }
+    .topbar-right { display: flex; align-items: center; gap: 18px; }
+    .live-state { display: flex; align-items: center; gap: 8px; color: var(--muted); font: 10px var(--mono); letter-spacing: .06em; }
+    .live-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--green); box-shadow: 0 0 12px rgba(148, 229, 196, .7); animation: beacon 2s ease-in-out infinite; }
+    .home-link { padding: 8px 12px; border: 1px solid var(--line); border-radius: 4px; color: #c5d0e6; font-size: 11px; transition: border-color .2s, color .2s; }
+    .home-link:hover { border-color: var(--blue); color: var(--blue); }
+
+    .workspace { position: relative; display: grid; min-height: 0; flex: 1; grid-template-columns: 280px minmax(0, 1fr) 286px; }
+    .sidebar { z-index: 2; min-height: 0; overflow-y: auto; padding: 21px 17px 18px; background: var(--panel); backdrop-filter: blur(20px); }
+    .sidebar-left { border-right: 1px solid var(--line); }
+    .sidebar-right { border-left: 1px solid var(--line); }
+    .panel-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 0 0 17px; color: #e3e9fa; font-size: 11px; font-weight: 700; letter-spacing: .13em; text-transform: uppercase; }
+    .panel-index { color: #74839f; font: 9px var(--mono); }
+    .control-group { margin: 0 0 24px; }
+    .label-row { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
+    label, .field-label { color: #c4cee2; font-size: 11px; font-weight: 600; }
+    .helper { color: #74839f; font: 9px var(--mono); }
+    .search-row { display: flex; gap: 6px; }
+    .field, select {
+      width: 100%;
+      min-width: 0;
+      height: 38px;
+      padding: 0 10px;
+      border: 1px solid var(--line);
+      border-radius: 4px;
+      background: rgba(5, 9, 20, .8);
+      color: var(--text);
+      font-size: 11px;
+    }
+    .field::placeholder { color: #6f7a94; }
+    select { cursor: pointer; }
+    select option { background: #101629; color: var(--text); }
+    .icon-button, .action-button, .zoom-button {
+      display: inline-flex;
+      min-width: 38px;
+      height: 38px;
+      align-items: center;
+      justify-content: center;
+      gap: 7px;
+      border: 1px solid var(--line);
+      border-radius: 4px;
+      background: rgba(132, 217, 255, .055);
+      color: #c8d6ed;
+      cursor: pointer;
+      transition: border-color .2s, color .2s, background .2s, transform .2s;
+    }
+    .icon-button:hover, .action-button:hover, .zoom-button:hover { transform: translateY(-1px); border-color: rgba(132, 217, 255, .55); background: rgba(132, 217, 255, .11); color: var(--blue); }
+    .icon-button svg, .action-button svg { width: 16px; height: 16px; }
+    .action-button { width: 100%; min-height: 37px; padding: 0 11px; font-size: 11px; font-weight: 600; }
+    .action-button.primary { border-color: rgba(132, 217, 255, .38); color: var(--blue); }
+    .coordinate-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .coordinate-fields .field { font-family: var(--mono); }
+    .coordinates-note { margin: 7px 0 9px; color: #75839b; font-size: 9px; line-height: 1.5; }
+    .message { min-height: 14px; margin: 7px 0 0; color: var(--gold); font-size: 10px; }
+    .message.error { color: #ff9a9a; }
+    .divider { height: 1px; margin: 17px 0; background: var(--line); }
+    .magnitude-readout { color: var(--blue); font: 11px var(--mono); }
+    input[type="range"] { width: 100%; height: 4px; margin: 11px 0 2px; accent-color: var(--blue); cursor: pointer; }
+    .range-ends { display: flex; justify-content: space-between; color: #74839f; font: 9px var(--mono); }
+    .catalogue-stat { display: flex; align-items: center; justify-content: space-between; padding: 9px 0; border-top: 1px solid rgba(162,181,220,.09); }
+    .catalogue-stat span:first-child { color: var(--muted); font-size: 10px; }
+    .catalogue-stat strong { color: #e3eaff; font: 11px var(--mono); }
+    .catalogue-stat strong.accent { color: var(--green); }
+
+    .map-area { position: relative; min-width: 0; min-height: 0; overflow: hidden; }
+    .map-glow { position: absolute; inset: 0; pointer-events: none; background: radial-gradient(ellipse at 50% 49%, rgba(39, 60, 117, .16), transparent 52%); }
+    #sky-canvas { position: absolute; inset: 0; width: 100%; height: 100%; cursor: grab; touch-action: none; }
+    #sky-canvas.dragging { cursor: grabbing; }
+    .map-topline { position: absolute; z-index: 1; top: 17px; left: 18px; display: flex; max-width: calc(100% - 36px); flex-wrap: wrap; align-items: center; gap: 8px; pointer-events: none; }
+    .map-chip { padding: 6px 9px; border: 1px solid rgba(162, 181, 220, .14); border-radius: 3px; background: rgba(6, 10, 23, .6); color: #9eacc5; font: 9px var(--mono); backdrop-filter: blur(8px); }
+    .map-chip strong { color: var(--blue); font-weight: 500; }
+    .map-controls { position: absolute; z-index: 1; top: 17px; right: 17px; display: flex; gap: 6px; }
+    .zoom-button { width: 34px; min-width: 34px; height: 34px; background: rgba(8, 12, 27, .78); font: 17px var(--mono); }
+    .map-readout { position: absolute; z-index: 1; right: 17px; bottom: 17px; display: flex; align-items: center; gap: 8px; color: #8d9bb5; font: 9px var(--mono); text-shadow: 0 1px 5px #050814; pointer-events: none; }
+    .north-mark { color: var(--blue); font-size: 13px; }
+    .map-legend { position: absolute; z-index: 1; bottom: 17px; left: 17px; display: flex; align-items: center; gap: 7px; color: #8391aa; font-size: 9px; pointer-events: none; }
+    .legend-star { width: 5px; height: 5px; border-radius: 50%; background: #d7ecff; box-shadow: 0 0 7px #84d9ff; }
+    .map-status { position: absolute; z-index: 1; inset: 50% auto auto 50%; display: none; width: min(390px, calc(100% - 40px)); padding: 20px; border: 1px solid rgba(162,181,220,.2); border-radius: 7px; background: rgba(8, 12, 26, .9); text-align: center; transform: translate(-50%, -50%); backdrop-filter: blur(15px); }
+    .map-status.visible { display: block; }
+    .map-status h2 { margin: 0 0 8px; font-size: 15px; }
+    .map-status p { margin: 0; color: var(--muted); font-size: 11px; line-height: 1.7; }
+    .map-status a { color: var(--blue); text-decoration: underline; text-underline-offset: 3px; }
+    .map-status .action-button { width: auto; margin-top: 13px; }
+    .map-status .action-button[hidden] { display: none; }
+
+    .selected-card { padding: 14px 12px; border: 1px solid rgba(132, 217, 255, .18); border-radius: 5px; background: linear-gradient(140deg, rgba(48, 73, 123, .16), rgba(11, 17, 33, .3)); }
+    .selected-state { display: flex; align-items: center; gap: 7px; color: #8290a9; font: 9px var(--mono); letter-spacing: .1em; text-transform: uppercase; }
+    .selected-state::before { width: 6px; height: 6px; border-radius: 50%; background: #64728e; content: ""; }
+    .selected-state.active { color: var(--green); }
+    .selected-state.active::before { background: var(--green); box-shadow: 0 0 8px rgba(148,229,196,.6); }
+    .star-name { margin: 13px 0 2px; color: #f0f3ff; font-size: 21px; font-weight: 600; letter-spacing: -.03em; overflow-wrap: anywhere; }
+    .star-designation { margin: 0; color: var(--blue); font: 10px/1.6 var(--mono); overflow-wrap: anywhere; }
+    .star-constellation { margin: 8px 0 0; color: #c6bbff; font-size: 11px; }
+    .data-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1px; margin-top: 15px; overflow: hidden; border: 1px solid rgba(162,181,220,.1); border-radius: 4px; background: rgba(162,181,220,.1); }
+    .data-cell { min-width: 0; padding: 9px 8px; background: rgba(10, 15, 29, .94); }
+    .data-cell span { display: block; color: #77859f; font-size: 8px; letter-spacing: .08em; text-transform: uppercase; }
+    .data-cell strong { display: block; margin-top: 4px; color: #dce5f8; font: 10px var(--mono); overflow-wrap: anywhere; }
+    .empty-selection { margin: 14px 0 2px; color: #8d9bb5; font-size: 11px; line-height: 1.75; }
+    .legend-heading { margin: 22px 0 9px; color: #b6c3dc; font-size: 10px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; }
+    .color-legend { display: flex; flex-direction: column; gap: 8px; }
+    .color-legend div { display: flex; align-items: center; gap: 8px; color: #8e9bb2; font-size: 10px; }
+    .color-dot { width: 7px; height: 7px; border-radius: 50%; }
+    .source-note { margin: 23px 0 0; padding-top: 13px; border-top: 1px solid var(--line); color: #78869d; font-size: 9px; line-height: 1.65; }
+    .source-note a { color: #a7dfff; text-decoration: underline; text-underline-offset: 2px; }
+    .source-note .license { display: block; margin-top: 5px; color: #65728a; }
+
+    .toast { position: absolute; z-index: 4; bottom: 53px; left: 50%; max-width: calc(100% - 30px); padding: 9px 13px; border: 1px solid rgba(162,181,220,.24); border-radius: 4px; background: rgba(12, 17, 31, .95); color: #dce6f9; font-size: 10px; opacity: 0; pointer-events: none; transform: translate(-50%, 8px); transition: opacity .2s, transform .2s; }
+    .toast.visible { opacity: 1; transform: translate(-50%, 0); }
+    .bottom-bar { display: flex; min-height: 27px; align-items: center; justify-content: space-between; gap: 10px; padding: 0 14px; border-top: 1px solid var(--line); background: rgba(7, 10, 21, .92); color: #68768e; font: 8px var(--mono); }
+    .bottom-bar span:last-child { text-align: right; }
+    .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
+
+    @keyframes beacon { 0%, 100% { opacity: .65; } 50% { opacity: 1; } }
+    @media (max-width: 1050px) {
+      .workspace { grid-template-columns: 250px minmax(0, 1fr); }
+      .sidebar-right { position: absolute; z-index: 2; top: 12px; right: 12px; width: 255px; max-height: calc(100% - 24px); border: 1px solid var(--line); border-radius: 6px; box-shadow: 0 15px 40px rgba(0,0,0,.25); }
+      .map-topline { max-width: calc(100% - 300px); }
+    }
+    @media (max-width: 680px) {
+      body { overflow: auto; }
+      .app { height: auto; min-height: 100svh; }
+      .topbar { min-height: 58px; padding: 0 14px; }
+      .brand-kicker { display: none; }
+      .brand-title { font-size: 11px; }
+      .topbar-right { gap: 9px; }
+      .live-state { max-width: 114px; font-size: 8px; }
+      .home-link { padding: 7px 8px; font-size: 9px; }
+      .workspace { display: flex; min-height: 0; flex: 1; flex-direction: column; }
+      .map-area { order: 0; height: 54svh; min-height: 360px; flex: 0 0 auto; border-bottom: 1px solid var(--line); }
+      .sidebar { overflow: visible; padding: 17px 15px; }
+      .sidebar-left { order: 1; border: 0; border-bottom: 1px solid var(--line); }
+      .sidebar-right { position: static; order: 2; width: auto; max-height: none; border: 0; border-radius: 0; box-shadow: none; }
+      .map-topline { top: 12px; left: 12px; max-width: calc(100% - 115px); gap: 5px; }
+      .map-chip { padding: 5px 6px; font-size: 8px; }
+      .map-controls { top: 12px; right: 12px; gap: 4px; }
+      .zoom-button { width: 30px; min-width: 30px; height: 30px; }
+      .map-legend { bottom: 12px; left: 12px; }
+      .map-readout { right: 12px; bottom: 12px; }
+      .control-group { margin-bottom: 18px; }
+      .bottom-bar { min-height: 32px; font-size: 7px; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; scroll-behavior: auto !important; transition-duration: .01ms !important; }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header class="topbar">
+      <div class="brand">
+        <span class="brand-symbol" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.25"><circle cx="12" cy="12" r="8"/><ellipse cx="12" cy="12" rx="10.5" ry="3.5" transform="rotate(-32 12 12)"/><circle cx="17.6" cy="7.4" r="1" fill="currentColor" stroke="none"/></svg>
+        </span>
+        <span><span class="brand-title">MAPA ESTELAR</span><br><span class="brand-kicker">SPHEREx EXPLORER · CIELO J2000</span></span>
+      </div>
+      <div class="topbar-right">
+        <a class="home-link" href="index.html" aria-label="Volver a la página principal">← Inicio</a>
+        <span class="live-state"><span class="live-dot" aria-hidden="true"></span><span id="catalog-status" role="status" aria-live="polite">Conectando catálogo…</span></span>
+      </div>
+    </header>
+
+    <main class="workspace">
+      <aside class="sidebar sidebar-left" aria-label="Controles del mapa">
+        <h1 class="panel-heading">Navegación celeste <span class="panel-index">01 / MAPA</span></h1>
+        <form class="control-group" id="search-form" role="search">
+          <div class="label-row"><label for="search-input">Buscar en el catálogo</label><span class="helper">NOMBRE · HIP · HD</span></div>
+          <div class="search-row">
+            <input class="field" id="search-input" type="search" placeholder="Ej. Sirio, Vega, HIP 32349" autocomplete="off">
+            <button class="icon-button" type="submit" aria-label="Buscar objeto">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="10.8" cy="10.8" r="6.6"/><path d="m16 16 4.2 4.2"/></svg>
+            </button>
+          </div>
+          <p class="message" id="search-message" aria-live="polite"></p>
+        </form>
+
+        <form class="control-group" id="coordinate-form">
+          <div class="label-row"><label for="ra-input">Ir a coordenadas</label><span class="helper">J2000</span></div>
+          <div class="coordinate-fields">
+            <div><label class="sr-only" for="ra-input">Ascensión recta en horas</label><input class="field" id="ra-input" type="number" min="0" max="24" step="any" placeholder="AR · horas" inputmode="decimal"></div>
+            <div><label class="sr-only" for="dec-input">Declinación en grados</label><input class="field" id="dec-input" type="number" min="-90" max="90" step="any" placeholder="Dec · grados" inputmode="decimal"></div>
+          </div>
+          <p class="coordinates-note">Ascensión recta en horas decimales (0–24); declinación en grados (−90 a +90).</p>
+          <button class="action-button primary" type="submit">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s7-6.2 7-12a7 7 0 1 0-14 0c0 5.8 7 12 7 12Z"/><circle cx="12" cy="9" r="2.2"/></svg>
+            Centrar coordenadas
+          </button>
+          <p class="message" id="coordinate-message" aria-live="polite"></p>
+        </form>
+
+        <div class="divider"></div>
+        <div class="control-group">
+          <div class="label-row"><label for="constellation-select">Identificar constelación</label><span class="helper">IAU</span></div>
+          <select id="constellation-select" aria-label="Filtrar por constelación">
+            <option value="">Todas las constelaciones</option>
+          </select>
+        </div>
+        <div class="control-group">
+          <div class="label-row"><label for="magnitude-slider">Magnitud límite</label><output class="magnitude-readout" id="magnitude-value" for="magnitude-slider">6.5</output></div>
+          <input id="magnitude-slider" type="range" min="1.5" max="6.5" step="0.5" value="6.5" aria-label="Magnitud aparente máxima">
+          <div class="range-ends"><span>Brillantes</span><span>A más tenues</span></div>
+        </div>
+        <div class="divider"></div>
+        <div class="control-group">
+          <h2 class="panel-heading">Datos visibles <span class="panel-index">CATÁLOGO</span></h2>
+          <div class="catalogue-stat"><span>Estrellas cargadas</span><strong id="total-stars">—</strong></div>
+          <div class="catalogue-stat"><span>En esta vista</span><strong id="visible-stars">—</strong></div>
+          <div class="catalogue-stat"><span>Magnitud aparente</span><strong id="magnitude-range">≤ 6.5</strong></div>
+          <div class="catalogue-stat"><span>Proyección</span><strong>AR / Dec</strong></div>
+        </div>
+        <button class="action-button" id="reset-view" type="button" aria-label="Restablecer vista completa del cielo">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M3.5 12a8.5 8.5 0 1 0 2.2-5.7L3.5 8.8"/><path d="M3.5 4.5v4.3h4.3"/></svg>
+          Restablecer vista
+        </button>
+      </aside>
+
+      <section class="map-area" aria-label="Mapa interactivo del cielo">
+        <div class="map-glow" aria-hidden="true"></div>
+        <canvas id="sky-canvas" tabindex="0" aria-label="Mapa estelar interactivo. Arrastra para moverte, usa la rueda para acercar o alejar y selecciona una estrella para ver sus datos."></canvas>
+        <div class="map-topline" aria-hidden="true">
+          <span class="map-chip">AR <strong id="center-ra">00h 00m</strong></span>
+          <span class="map-chip">DEC <strong id="center-dec">+00° 00′</strong></span>
+          <span class="map-chip">CAMPO <strong id="field-of-view">360°</strong></span>
+          <span class="map-chip" id="constellation-chip" hidden>CONSTELACIÓN <strong id="constellation-name"></strong></span>
+        </div>
+        <div class="map-controls">
+          <button class="zoom-button" id="zoom-out" type="button" aria-label="Alejar mapa" title="Alejar (−)">−</button>
+          <button class="zoom-button" id="zoom-in" type="button" aria-label="Acercar mapa" title="Acercar (+)">+</button>
+          <button class="zoom-button" id="fullscreen" type="button" aria-label="Pantalla completa" title="Pantalla completa">
+            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M8 3H3v5M16 3h5v5M21 16v5h-5M3 16v5h5"/></svg>
+          </button>
+        </div>
+        <div class="map-legend"><span class="legend-star"></span> Posiciones del catálogo · brillo aparente</div>
+        <div class="map-readout"><span class="north-mark">✦</span><span>DESPLAZA PARA EXPLORAR</span></div>
+        <div class="map-status visible" id="map-status">
+          <h2 id="map-status-title">Cargando catálogo estelar</h2>
+          <p id="map-status-message">Conectando con HYG v4.1. Las estrellas solo aparecerán cuando se carguen sus coordenadas reales.</p>
+          <button class="action-button primary" id="retry-catalog" type="button" hidden>Reintentar carga</button>
+        </div>
+        <div class="toast" id="toast" role="status" aria-live="polite"></div>
+      </section>
+
+      <aside class="sidebar sidebar-right" aria-label="Información del objeto seleccionado">
+        <h2 class="panel-heading">Ficha del objeto <span class="panel-index">02 / DATOS</span></h2>
+        <section class="selected-card" aria-live="polite">
+          <div class="selected-state" id="selection-state">Sin selección</div>
+          <h3 class="star-name" id="star-name">Explora el cielo</h3>
+          <p class="star-designation" id="star-designation">Selecciona una estrella en el mapa</p>
+          <p class="star-constellation" id="star-constellation">Las coordenadas se mostrarán en época J2000.</p>
+          <div class="data-grid">
+            <div class="data-cell"><span>Ascensión recta</span><strong id="star-ra">—</strong></div>
+            <div class="data-cell"><span>Declinación</span><strong id="star-dec">—</strong></div>
+            <div class="data-cell"><span>Magnitud V</span><strong id="star-mag">—</strong></div>
+            <div class="data-cell"><span>Tipo espectral</span><strong id="star-spectral">—</strong></div>
+            <div class="data-cell"><span>Índice de color B−V</span><strong id="star-color-index">—</strong></div>
+            <div class="data-cell"><span>Identificador HIP</span><strong id="star-hip">—</strong></div>
+          </div>
+        </section>
+        <p class="empty-selection" id="selection-help">Arrastra el mapa para desplazarte, usa la rueda o los botones para cambiar la escala. Selecciona una estrella para consultar sus designaciones y datos del catálogo.</p>
+        <h3 class="legend-heading">Temperatura de color</h3>
+        <div class="color-legend" aria-label="Leyenda de temperatura de color">
+          <div><span class="color-dot" style="background:#9dc8ff"></span>Azul · estrellas más calientes</div>
+          <div><span class="color-dot" style="background:#e8ecff"></span>Blanco · temperaturas intermedias</div>
+          <div><span class="color-dot" style="background:#ffd089"></span>Dorado · estrellas más frías</div>
+        </div>
+        <p class="source-note">
+          Posiciones, magnitudes y designaciones: <a href="https://github.com/astronexus/HYG-Database" target="_blank" rel="noopener noreferrer">catálogo HYG v4.1</a>. Sus fuentes incluyen Hipparcos, Yale Bright Star y Gliese; posiciones referidas a época/equinoccio J2000. Las constelaciones corresponden al campo de catálogo, no a límites dibujados.
+          <span class="license">Datos HYG: CC BY-SA 4.0 · Las estrellas no están a escala física.</span>
+        </p>
+      </aside>
+    </main>
+    <footer class="bottom-bar"><span>SPHEREx EXPLORER · VISUALIZACIÓN CELESTE</span><span>ESTRELLAS: CATÁLOGO HYG v4.1 · J2000.0</span></footer>
+  </div>
+
+  <script>
+    (() => {
+      "use strict";
+
+      const CATALOG_URL = "https://raw.githubusercontent.com/astronexus/HYG-Database/main/hyg/CURRENT/hygdata_v41.csv";
+      const MAX_MAGNITUDE = 6.5;
+      const constellations = [
+        ["And","Andrómeda"],["Ant","Máquina Neumática"],["Aps","Ave del Paraíso"],["Aqr","Acuario"],["Aql","Águila"],["Ara","Altar"],["Ari","Aries"],["Aur","Auriga"],["Boo","Boyero"],["Cae","Cincel"],["Cam","Jirafa"],["Cnc","Cáncer"],["CVn","Perros de Caza"],["CMa","Can Mayor"],["CMi","Can Menor"],["Cap","Capricornio"],["Car","Carina"],["Cas","Casiopea"],["Cen","Centauro"],["Cep","Cefeo"],["Cet","Ballena"],["Cha","Camaleón"],["Cir","Compás"],["Col","Paloma"],["Com","Cabellera de Berenice"],["CrA","Corona Austral"],["CrB","Corona Boreal"],["Crv","Cuervo"],["Crt","Copa"],["Cru","Cruz del Sur"],["Cyg","Cisne"],["Del","Delfín"],["Dor","Dorado"],["Dra","Dragón"],["Equ","Caballito"],["Eri","Erídano"],["For","Horno"],["Gem","Géminis"],["Gru","Grulla"],["Her","Hércules"],["Hor","Reloj"],["Hya","Hidra"],["Hyi","Hidro"],["Ind","Indio"],["Lac","Lagarto"],["Leo","León"],["LMi","Leo Menor"],["Lep","Liebre"],["Lib","Libra"],["Lup","Lobo"],["Lyn","Lince"],["Lyr","Lira"],["Men","Mensa"],["Mic","Microscopio"],["Mon","Unicornio"],["Mus","Mosca"],["Nor","Norma"],["Oct","Octante"],["Oph","Ofiuco"],["Ori","Orión"],["Pav","Pavo"],["Peg","Pegaso"],["Per","Perseo"],["Phe","Fénix"],["Pic","Pintor"],["Psc","Piscis"],["PsA","Pez Austral"],["Pup","Popa"],["Pyx","Brújula"],["Ret","Retículo"],["Sge","Flecha"],["Sgr","Sagitario"],["Sco","Escorpio"],["Scl","Escultor"],["Sct","Escudo"],["Ser","Serpiente"],["Sex","Sextante"],["Tau","Tauro"],["Tel","Telescopio"],["Tri","Triángulo"],["TrA","Triángulo Austral"],["Tuc","Tucán"],["UMa","Osa Mayor"],["UMi","Osa Menor"],["Vel","Vela"],["Vir","Virgo"],["Vol","Pez Volador"],["Vul","Zorra"]
+      ];
+      const constellationNames = new Map(constellations);
+      const byCode = new Map(constellations.map(([code]) => [code.toLowerCase(), code]));
+      const byName = new Map(constellations.map(([code, name]) => [name.toLocaleLowerCase("es"), code]));
+      const canvas = document.getElementById("sky-canvas");
+      const ctx = canvas.getContext("2d");
+      const mapArea = document.querySelector(".map-area");
+      const stars = [];
+      const view = { ra: 0, dec: 0, zoom: 1 };
+      const pointer = { down: false, dragged: false, x: 0, y: 0, lastX: 0, lastY: 0 };
+      let width = 0;
+      let height = 0;
+      let pixelRatio = 1;
+      let selectedStar = null;
+      let constellationFilter = "";
+      let magnitudeLimit = MAX_MAGNITUDE;
+      let lastDraw = 0;
+      let drawFrame = null;
+      let toastTimer;
+      const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+      const ui = {
+        catalogStatus: document.getElementById("catalog-status"),
+        totalStars: document.getElementById("total-stars"),
+        visibleStars: document.getElementById("visible-stars"),
+        magnitudeRange: document.getElementById("magnitude-range"),
+        magnitudeSlider: document.getElementById("magnitude-slider"),
+        magnitudeValue: document.getElementById("magnitude-value"),
+        constellationSelect: document.getElementById("constellation-select"),
+        mapStatus: document.getElementById("map-status"),
+        mapStatusTitle: document.getElementById("map-status-title"),
+        mapStatusMessage: document.getElementById("map-status-message"),
+        centerRa: document.getElementById("center-ra"),
+        centerDec: document.getElementById("center-dec"),
+        fieldOfView: document.getElementById("field-of-view"),
+        toast: document.getElementById("toast"),
+        searchInput: document.getElementById("search-input"),
+        searchMessage: document.getElementById("search-message"),
+        coordinateMessage: document.getElementById("coordinate-message")
+      };
+
+      const mod = (value, divisor) => ((value % divisor) + divisor) % divisor;
+      const wrapHours = (hours) => mod(hours, 24);
+      const signedHourDifference = (hours, center) => mod(hours - center + 12, 24) - 12;
+      const formatHours = (hours) => {
+        const totalSeconds = Math.round(wrapHours(hours) * 3600);
+        const h = Math.floor(totalSeconds / 3600);
+        const m = Math.floor((totalSeconds % 3600) / 60);
+        return `${String(h).padStart(2, "0")}h ${String(m).padStart(2, "0")}m`;
+      };
+      const formatDec = (degrees) => `${degrees >= 0 ? "+" : "−"}${Math.abs(degrees).toFixed(2)}°`;
+      function requestDraw() {
+        if (drawFrame === null) drawFrame = requestAnimationFrame(drawStars);
+      }
+
+      function showToast(message) {
+        ui.toast.textContent = message;
+        ui.toast.classList.add("visible");
+        clearTimeout(toastTimer);
+        toastTimer = setTimeout(() => ui.toast.classList.remove("visible"), 2600);
+      }
+
+      function updateReadout() {
+        ui.centerRa.textContent = formatHours(view.ra);
+        ui.centerDec.textContent = `${view.dec >= 0 ? "+" : "−"}${Math.abs(view.dec).toFixed(1)}°`;
+        const fov = Math.min(360, 360 / view.zoom);
+        ui.fieldOfView.textContent = fov >= 10 ? `${Math.round(fov)}°` : `${fov.toFixed(1)}°`;
+        const constellationChip = document.getElementById("constellation-chip");
+        constellationChip.hidden = !constellationFilter;
+        if (constellationFilter) {
+          document.getElementById("constellation-name").textContent = constellationNames.get(constellationFilter) || constellationFilter;
+        }
+      }
+
+      function resizeCanvas() {
+        const rect = mapArea.getBoundingClientRect();
+        if (!rect.width || !rect.height) return;
+        pixelRatio = Math.min(window.devicePixelRatio || 1, 2);
+        width = rect.width;
+        height = rect.height;
+        canvas.width = Math.round(width * pixelRatio);
+        canvas.height = Math.round(height * pixelRatio);
+        ctx.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
+      }
+
+      function pixelsPerDegree() {
+        return width * view.zoom / 360;
+      }
+
+      function starPosition(star) {
+        const scale = pixelsPerDegree();
+        return {
+          x: width / 2 - signedHourDifference(star.ra, view.ra) * 15 * scale,
+          y: height / 2 - (star.dec - view.dec) * scale
+        };
+      }
+
+      function starColor(star) {
+        if (!Number.isFinite(star.colorIndex)) return "#d9e8ff";
+        if (star.colorIndex < 0.05) return "#9dc8ff";
+        if (star.colorIndex < 0.45) return "#d4e5ff";
+        if (star.colorIndex < 0.9) return "#fff0ce";
+        return "#ffc879";
+      }
+
+      function drawGrid(scale) {
+        const raSpan = 360 / view.zoom;
+        const decSpan = height / scale;
+        const leftRa = view.ra - raSpan / 30;
+        const rightRa = view.ra + raSpan / 30;
+        const stepHours = view.zoom < 2 ? 2 : view.zoom < 7 ? 1 : .5;
+        const firstRa = Math.floor(leftRa / stepHours) * stepHours;
+        ctx.save();
+        ctx.lineWidth = 1;
+        ctx.strokeStyle = "rgba(132, 174, 218, .075)";
+        ctx.fillStyle = "rgba(149, 169, 205, .45)";
+        ctx.font = "9px Cascadia Code, Consolas, monospace";
+        ctx.textBaseline = "top";
+        for (let ra = firstRa; ra <= rightRa + stepHours; ra += stepHours) {
+          const x = width / 2 - signedHourDifference(ra, view.ra) * 15 * scale;
+          ctx.beginPath();
+          ctx.moveTo(x, 0);
+          ctx.lineTo(x, height);
+          ctx.stroke();
+          if (x >= 4 && x <= width - 32) ctx.fillText(`${String(Math.round(mod(ra, 24))).padStart(2, "0")}h`, x + 3, 5);
+        }
+        const stepDec = view.zoom < 2 ? 30 : view.zoom < 8 ? 15 : 5;
+        const minDec = Math.max(-90, view.dec - decSpan / 2);
+        const maxDec = Math.min(90, view.dec + decSpan / 2);
+        const firstDec = Math.ceil(minDec / stepDec) * stepDec;
+        for (let dec = firstDec; dec <= maxDec; dec += stepDec) {
+          const y = height / 2 - (dec - view.dec) * scale;
+          ctx.beginPath();
+          ctx.moveTo(0, y);
+          ctx.lineTo(width, y);
+          ctx.strokeStyle = dec === 0 ? "rgba(132, 217, 255, .14)" : "rgba(132, 174, 218, .075)";
+          ctx.stroke();
+          if (y >= 4 && y <= height - 12) ctx.fillText(`${dec > 0 ? "+" : ""}${dec}°`, 5, y + 3);
+        }
+        ctx.restore();
+      }
+
+      const starsByConstellation = new Map();
+      function drawStars(time) {
+        drawFrame = null;
+        if (!width || !height) return;
+        if (time - lastDraw < 32) {
+          requestDraw();
+          return;
+        }
+        lastDraw = time;
+        ctx.clearRect(0, 0, width, height);
+        const scale = pixelsPerDegree();
+        drawGrid(scale);
+        const decMargin = height / (2 * scale) + 1;
+        let drawn = 0;
+        for (const star of stars) {
+          if (star.mag > magnitudeLimit) continue;
+          if (constellationFilter && star.con !== constellationFilter) continue;
+          const decDiff = star.dec - view.dec;
+          if (Math.abs(decDiff) > decMargin) continue;
+          const raDiff = signedHourDifference(star.ra, view.ra);
+          if (Math.abs(raDiff) * 15 > width / (2 * scale) + 1) continue;
+          const x = width / 2 - raDiff * 15 * scale;
+          const y = height / 2 - decDiff * scale;
+          if (x < -3 || x > width + 3 || y < -3 || y > height + 3) continue;
+          const radius = Math.max(0.65, Math.min(4.2, 1.15 + (magnitudeLimit - star.mag) * .45));
+          const pulse = reducedMotion ? 1 : .9 + .1 * Math.sin(time * .0014 + star.twinkle);
+          ctx.beginPath();
+          ctx.arc(x, y, radius, 0, Math.PI * 2);
+          ctx.globalAlpha = pulse;
+          ctx.fillStyle = starColor(star);
+          ctx.shadowBlur = radius > 1.6 ? radius * 2.3 : 0;
+          ctx.shadowColor = starColor(star);
+          ctx.fill();
+          ctx.shadowBlur = 0;
+          ctx.globalAlpha = 1;
+          drawn++;
+          if ((star.mag < 2.3 || (view.zoom > 3 && star.mag < 4)) && (star.proper || star.bayer)) {
+            ctx.font = "10px Segoe UI, sans-serif";
+            ctx.fillStyle = "rgba(223, 231, 251, .76)";
+            ctx.fillText(star.proper || `${star.bayer} ${star.con}`, x + radius + 4, y - 5);
+          }
+        }
+        if (selectedStar) drawSelection();
+        ui.visibleStars.textContent = drawn.toLocaleString("es");
+        updateReadout();
+        if (!reducedMotion && stars.length) requestDraw();
+      }
+
+      function drawSelection() {
+        const { x, y } = starPosition(selectedStar);
+        if (x < -20 || x > width + 20 || y < -20 || y > height + 20) return;
+        const pulse = 11 + 2 * Math.sin(performance.now() * .004);
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(x, y, pulse, 0, Math.PI * 2);
+        ctx.strokeStyle = "rgba(132, 217, 255, .72)";
+        ctx.lineWidth = 1;
+        ctx.setLineDash([3, 4]);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.beginPath();
+        ctx.arc(x, y, 3.2, 0, Math.PI * 2);
+        ctx.fillStyle = "#fff";
+        ctx.shadowColor = "#84d9ff";
+        ctx.shadowBlur = 13;
+        ctx.fill();
+        ctx.restore();
+      }
+
+      function parseCSVLine(line) {
+        const fields = [];
+        let field = "";
+        let quoted = false;
+        for (let i = 0; i < line.length; i++) {
+          const char = line[i];
+          if (char === '"') {
+            if (quoted && line[i + 1] === '"') {
+              field += '"';
+              i++;
+            } else {
+              quoted = !quoted;
+            }
+          } else if (char === "," && !quoted) {
+            fields.push(field);
+            field = "";
+          } else {
+            field += char;
+          }
+        }
+        fields.push(field);
+        return fields;
+      }
+
+      function normalizeStar(row) {
+        if (!row.mag || !row.mag.trim() || !row.ra || !row.ra.trim() || !row.dec || !row.dec.trim() || !row.con) return null;
+        const mag = Number(row.mag);
+        const ra = Number(row.ra);
+        const dec = Number(row.dec);
+        if (!Number.isFinite(mag) || mag > MAX_MAGNITUDE || !Number.isFinite(ra) || !Number.isFinite(dec) || !row.con) return null;
+        const id = row.hip || `hyg-${row.id}`;
+        return {
+          id,
+          hip: row.hip || "",
+          hd: row.hd || "",
+          hr: row.hr || "",
+          proper: row.proper || "",
+          ra: wrapHours(ra),
+          dec,
+          mag,
+          spectral: row.spect || "",
+          colorIndex: row.ci === "" ? NaN : Number(row.ci),
+          con: row.con,
+          bayer: row.bayer || "",
+          flam: row.flam || "",
+          twinkle: (Number(row.id) * 2.399963) % (Math.PI * 2)
+        };
+      }
+
+      function parseCatalog(csv) {
+        const lines = csv.split(/\r?\n/);
+        if (!lines.length) throw new Error("El catálogo está vacío.");
+        const headers = parseCSVLine(lines[0]);
+        const wanted = ["id", "hip", "hd", "hr", "proper", "ra", "dec", "mag", "spect", "ci", "con", "bayer", "flam"];
+        const indexes = Object.fromEntries(wanted.map((key) => [key, headers.indexOf(key)]));
+        if (indexes.ra < 0 || indexes.dec < 0 || indexes.mag < 0 || indexes.con < 0) {
+          throw new Error("El archivo recibido no tiene el formato HYG esperado.");
+        }
+        for (let i = 1; i < lines.length; i++) {
+          if (!lines[i]) continue;
+          const values = parseCSVLine(lines[i]);
+          const row = {};
+          for (const key of wanted) if (indexes[key] >= 0) row[key] = values[indexes[key]] || "";
+          const star = normalizeStar(row);
+          if (!star || star.mag < -5) continue;
+          stars.push(star);
+          if (!starsByConstellation.has(star.con)) starsByConstellation.set(star.con, []);
+          starsByConstellation.get(star.con).push(star);
+        }
+        stars.sort((a, b) => a.mag - b.mag);
+        if (stars.length < 1000) throw new Error(`El catálogo se cargó incompleto (${stars.length} estrellas).`);
+      }
+
+      function openCache() {
+        return new Promise((resolve, reject) => {
+          if (!("indexedDB" in window)) {
+            resolve(null);
+            return;
+          }
+          const request = indexedDB.open("spherex-hyg-cache", 1);
+          request.onupgradeneeded = () => request.result.createObjectStore("catalog");
+          request.onsuccess = () => resolve(request.result);
+          request.onerror = () => reject(request.error || new Error("No se pudo abrir la caché local."));
+        });
+      }
+
+      async function readCache() {
+        const db = await openCache();
+        if (!db) return null;
+        return new Promise((resolve, reject) => {
+          const request = db.transaction("catalog", "readonly").objectStore("catalog").get("hyg-v4.1-bright");
+          request.onsuccess = () => resolve(request.result || null);
+          request.onerror = () => reject(request.error || new Error("No se pudo leer la caché del catálogo."));
+          db.close();
+        });
+      }
+
+      async function writeCache(rows) {
+        const db = await openCache();
+        if (!db) return;
+        return new Promise((resolve, reject) => {
+          const transaction = db.transaction("catalog", "readwrite");
+          transaction.objectStore("catalog").put(rows, "hyg-v4.1-bright");
+          transaction.oncomplete = () => { db.close(); resolve(); };
+          transaction.onerror = () => { db.close(); reject(transaction.error || new Error("No se pudo guardar la caché del catálogo.")); };
+          transaction.onabort = () => { db.close(); reject(transaction.error || new Error("Se canceló la caché del catálogo.")); };
+        });
+      }
+
+      function addCatalogRows(rows) {
+        for (const row of rows) {
+          if (!Number.isFinite(row.ra) || !Number.isFinite(row.dec) || !Number.isFinite(row.mag) || !row.con) continue;
+          const star = { ...row, twinkle: (Number(row.id.replace(/\D/g, "")) * 2.399963) % (Math.PI * 2) };
+          stars.push(star);
+          if (!starsByConstellation.has(star.con)) starsByConstellation.set(star.con, []);
+          starsByConstellation.get(star.con).push(star);
+        }
+        stars.sort((a, b) => a.mag - b.mag);
+      }
+
+      function populateConstellations() {
+        const present = new Set(stars.map((star) => star.con));
+        for (const [code, name] of constellations) {
+          if (!present.has(code)) continue;
+          const option = document.createElement("option");
+          option.value = code;
+          option.textContent = `${name} (${code})`;
+          ui.constellationSelect.append(option);
+        }
+      }
+
+      function showCatalogError(error) {
+        ui.catalogStatus.textContent = "Catálogo sin conexión";
+        ui.catalogStatus.title = error.message;
+        ui.mapStatusTitle.textContent = "No se pudo cargar el catálogo real";
+        ui.mapStatusMessage.replaceChildren(
+          document.createTextNode("No se mostrarán estrellas inventadas. Comprueba tu conexión e inténtalo de nuevo desde "),
+          Object.assign(document.createElement("a"), { href: "https://github.com/astronexus/HYG-Database", textContent: "HYG v4.1" }),
+          document.createTextNode(".")
+        );
+        document.querySelector(".live-dot").style.background = "#ff9292";
+        document.getElementById("retry-catalog").hidden = false;
+        ui.mapStatus.classList.add("visible");
+        showToast("Catálogo no disponible: " + error.message);
+      }
+
+      async function loadCatalog() {
+        ui.catalogStatus.textContent = "Cargando catálogo…";
+        ui.mapStatus.classList.add("visible");
+        document.getElementById("retry-catalog").hidden = true;
+        try {
+          let cached;
+          try {
+            cached = await readCache();
+          } catch (cacheError) {
+            console.warn("No se pudo leer la caché del catálogo; se consultará la fuente.", cacheError);
+          }
+          if (Array.isArray(cached) && cached.length >= 1000) {
+            addCatalogRows(cached);
+            ui.catalogStatus.textContent = "Catálogo HYG v4.1 · caché";
+          } else {
+            const controller = new AbortController();
+            const timeout = setTimeout(() => controller.abort(), 45000);
+            try {
+              const response = await fetch(CATALOG_URL, { mode: "cors", cache: "force-cache", signal: controller.signal });
+              if (!response.ok) throw new Error(`HYG respondió con estado ${response.status}.`);
+              const csv = await response.text();
+              parseCatalog(csv);
+            } finally {
+              clearTimeout(timeout);
+            }
+            try {
+              const rows = stars.map(({ twinkle, ...star }) => star);
+              await writeCache(rows);
+            } catch (cacheError) {
+              console.warn("No se pudo guardar la caché del catálogo.", cacheError);
+            }
+            ui.catalogStatus.textContent = "Catálogo HYG v4.1";
+          }
+          populateConstellations();
+          ui.totalStars.textContent = stars.length.toLocaleString("es");
+          ui.magnitudeSlider.value = String(magnitudeLimit);
+          document.querySelector(".live-dot").style.background = "";
+          document.getElementById("retry-catalog").hidden = true;
+          ui.mapStatus.classList.remove("visible");
+          ui.mapStatusMessage.textContent = "";
+          requestDraw();
+        } catch (error) {
+          stars.length = 0;
+          starsByConstellation.clear();
+          ui.totalStars.textContent = "—";
+          console.error("Error al cargar HYG v4.1:", error);
+          showCatalogError(error);
+          requestDraw();
+        }
+      }
+
+      function setSelectedStar(star) {
+        selectedStar = star;
+        if (!star) {
+          document.getElementById("selection-state").textContent = "Sin selección";
+          document.getElementById("selection-state").classList.remove("active");
+          document.getElementById("star-name").textContent = "Explora el cielo";
+          document.getElementById("star-designation").textContent = "Selecciona una estrella en el mapa";
+          document.getElementById("star-constellation").textContent = "Las coordenadas se mostrarán en época J2000.";
+          for (const id of ["star-ra", "star-dec", "star-mag", "star-spectral", "star-color-index", "star-hip"]) {
+            document.getElementById(id).textContent = "—";
+          }
+          document.getElementById("selection-help").textContent = "Arrastra el mapa para desplazarte, usa la rueda o los botones para cambiar la escala. Selecciona una estrella para consultar sus designaciones y datos del catálogo.";
+          requestDraw();
+          return;
+        }
+        document.getElementById("selection-state").textContent = "Objeto catalogado";
+        document.getElementById("selection-state").classList.add("active");
+        document.getElementById("star-name").textContent = star.proper || (star.bayer ? `${star.bayer} ${star.con}` : star.flam ? `${star.flam} ${star.con}` : `HIP ${star.hip || "—"}`);
+        const designations = [
+          star.bayer ? `${star.bayer} ${star.con}` : "",
+          star.flam ? `${star.flam} ${star.con}` : "",
+          star.hip ? `HIP ${star.hip}` : "",
+          star.hd ? `HD ${star.hd}` : "",
+          star.hr ? `HR ${star.hr}` : ""
+        ].filter(Boolean);
+        document.getElementById("star-designation").textContent = designations.join(" · ") || "Designación HYG";
+        const constellation = constellationNames.get(star.con);
+        document.getElementById("star-constellation").textContent = constellation ? `${constellation} · ${star.con}` : `Constelación ${star.con}`;
+        document.getElementById("star-ra").textContent = `${formatHours(star.ra)} (${star.ra.toFixed(5)} h)`;
+        document.getElementById("star-dec").textContent = `${formatDec(star.dec)} (${star.dec.toFixed(5)}°)`;
+        document.getElementById("star-mag").textContent = star.mag.toFixed(2);
+        document.getElementById("star-spectral").textContent = star.spectral || "Sin dato";
+        document.getElementById("star-color-index").textContent = Number.isFinite(star.colorIndex) ? star.colorIndex.toFixed(3) : "Sin dato";
+        document.getElementById("star-hip").textContent = star.hip || "Sin dato";
+        document.getElementById("selection-help").textContent = "Magnitud visual aparente y posición ecuatorial del catálogo HYG v4.1. Las estrellas se muestran en proyección de coordenadas, no a escala de distancia.";
+        requestDraw();
+      }
+
+      function selectNearest(x, y) {
+        let closest = null;
+        let minDistance = 16;
+        const scale = pixelsPerDegree();
+        for (const star of stars) {
+          if (star.mag > magnitudeLimit || (constellationFilter && star.con !== constellationFilter)) continue;
+          const decDiff = star.dec - view.dec;
+          if (Math.abs(decDiff) > height / (2 * scale) + 1) continue;
+          const raDiff = signedHourDifference(star.ra, view.ra);
+          if (Math.abs(raDiff) * 15 > width / (2 * scale) + 1) continue;
+          const dx = width / 2 - raDiff * 15 * scale - x;
+          const dy = height / 2 - decDiff * scale - y;
+          const distance = Math.hypot(dx, dy);
+          if (distance < minDistance) {
+            minDistance = distance;
+            closest = star;
+          }
+        }
+        if (closest) {
+          setSelectedStar(closest);
+          return;
+        }
+        showToast("No hay una estrella del catálogo en ese punto.");
+      }
+
+      function zoomAt(nextZoom, x = width / 2, y = height / 2) {
+        const oldScale = pixelsPerDegree();
+        const raBefore = wrapHours(view.ra - (x - width / 2) / oldScale / 15);
+        const decBefore = view.dec + (height / 2 - y) / oldScale;
+        view.zoom = Math.max(1, Math.min(32, nextZoom));
+        const newScale = pixelsPerDegree();
+        view.ra = wrapHours(raBefore + (x - width / 2) / newScale / 15);
+        view.dec = Math.max(-90, Math.min(90, decBefore - (height / 2 - y) / newScale));
+        updateReadout();
+        requestDraw();
+      }
+
+      document.getElementById("retry-catalog").addEventListener("click", () => loadCatalog());
+
+      document.getElementById("search-form").addEventListener("submit", (event) => {
+        event.preventDefault();
+        const query = ui.searchInput.value.trim();
+        ui.searchMessage.classList.remove("error");
+        if (!query) {
+          ui.searchMessage.textContent = "Escribe un nombre, designación o HIP.";
+          return;
+        }
+        const normalized = query.toLocaleLowerCase("es");
+        const code = byCode.get(normalized);
+        const constellation = byName.get(normalized);
+        if (code || constellation) {
+          const targetCode = code || constellation;
+          ui.constellationSelect.value = targetCode;
+          constellationFilter = targetCode;
+          const group = starsByConstellation.get(targetCode) || [];
+          if (group.length) {
+            const brightest = group[0];
+            view.ra = brightest.ra;
+            view.dec = brightest.dec;
+            view.zoom = Math.max(view.zoom, 1.5);
+            setSelectedStar(brightest);
+            ui.searchMessage.textContent = `Mostrando ${constellationNames.get(targetCode)} (${group.length.toLocaleString("es")} estrellas).`;
+          }
+          return;
+        }
+        constellationFilter = "";
+        ui.constellationSelect.value = "";
+        const stripped = normalized.replace(/^(hip|hd|hr)\s*#?\s*/, "");
+        const prefix = normalized.startsWith("hip") ? "hip" : normalized.startsWith("hd") ? "hd" : normalized.startsWith("hr") ? "hr" : "";
+        const matches = stars.filter((star) => {
+          if (prefix) return String(star[prefix]).toLocaleLowerCase("es") === stripped;
+          return [star.proper, star.bayer ? `${star.bayer} ${star.con}` : "", star.flam ? `${star.flam} ${star.con}` : "", star.hip ? `hip ${star.hip}` : "", star.hd ? `hd ${star.hd}` : "", star.hr ? `hr ${star.hr}` : ""]
+            .some((value) => value.toLocaleLowerCase("es").includes(normalized));
+        });
+        if (!matches.length) {
+          ui.searchMessage.textContent = "";
+          ui.searchMessage.classList.add("error");
+          ui.searchMessage.textContent = "Sin coincidencias en las estrellas cargadas.";
+          return;
+        }
+        const star = matches[0];
+        view.ra = star.ra;
+        view.dec = star.dec;
+        view.zoom = Math.max(view.zoom, 5);
+        magnitudeLimit = Math.max(magnitudeLimit, Math.min(MAX_MAGNITUDE, star.mag));
+        ui.magnitudeSlider.value = String(magnitudeLimit);
+        ui.magnitudeValue.textContent = magnitudeLimit.toFixed(1);
+        ui.magnitudeRange.textContent = `≤ ${magnitudeLimit.toFixed(1)}`;
+        setSelectedStar(star);
+        ui.searchMessage.textContent = matches.length > 1 ? `${matches.length} coincidencias; se centró la más brillante.` : "Objeto encontrado en HYG v4.1.";
+      });
+
+      document.getElementById("coordinate-form").addEventListener("submit", (event) => {
+        event.preventDefault();
+        const raValue = document.getElementById("ra-input").value.trim();
+        const decValue = document.getElementById("dec-input").value.trim();
+        const ra = Number(raValue);
+        const dec = Number(decValue);
+        if (!raValue || !decValue || !Number.isFinite(ra) || !Number.isFinite(dec) || ra < 0 || ra >= 24 || dec < -90 || dec > 90) {
+          ui.coordinateMessage.classList.add("error");
+          ui.coordinateMessage.textContent = "Introduce AR entre 0 y <24 h y Dec entre −90° y +90°.";
+          return;
+        }
+        view.ra = ra;
+        view.dec = dec;
+        view.zoom = Math.max(view.zoom, 3);
+        constellationFilter = "";
+        ui.constellationSelect.value = "";
+        ui.searchInput.value = "";
+        ui.searchMessage.textContent = "";
+        setSelectedStar(null);
+        document.getElementById("selection-state").textContent = "Coordenadas centradas";
+        document.getElementById("selection-state").classList.remove("active");
+        document.getElementById("star-name").textContent = "Sin estrella seleccionada";
+        document.getElementById("star-designation").textContent = "Centro de la vista del mapa";
+        document.getElementById("star-constellation").textContent = "Posición de consulta · época J2000";
+        for (const id of ["star-ra", "star-dec"]) document.getElementById(id).textContent = "—";
+        for (const id of ["star-mag", "star-spectral", "star-color-index", "star-hip"]) document.getElementById(id).textContent = "—";
+        ui.coordinateMessage.classList.remove("error");
+        ui.coordinateMessage.textContent = `Vista centrada en ${formatHours(ra)}, ${formatDec(dec)}.`;
+        requestDraw();
+      });
+
+      ui.constellationSelect.addEventListener("change", () => {
+        constellationFilter = ui.constellationSelect.value;
+        setSelectedStar(null);
+        if (!constellationFilter) ui.searchInput.value = "";
+        if (constellationFilter) {
+          const group = starsByConstellation.get(constellationFilter) || [];
+          if (group.length) {
+            view.ra = group[0].ra;
+            view.dec = group[0].dec;
+            view.zoom = Math.max(view.zoom, 1.5);
+            ui.searchInput.value = constellationNames.get(constellationFilter);
+          }
+        }
+        document.getElementById("star-name").textContent = constellationFilter ? constellationNames.get(constellationFilter) : "Explora el cielo";
+        document.getElementById("star-designation").textContent = constellationFilter ? `Constelación IAU · ${constellationFilter}` : "Selecciona una estrella en el mapa";
+        document.getElementById("star-constellation").textContent = constellationFilter ? "Mostrando estrellas registradas en este campo del catálogo." : "Las coordenadas se mostrarán en época J2000.";
+        requestDraw();
+      });
+
+      ui.magnitudeSlider.addEventListener("input", () => {
+        magnitudeLimit = Number(ui.magnitudeSlider.value);
+        ui.magnitudeValue.textContent = magnitudeLimit.toFixed(1);
+        ui.magnitudeRange.textContent = `≤ ${magnitudeLimit.toFixed(1)}`;
+        if (selectedStar && selectedStar.mag > magnitudeLimit) {
+          setSelectedStar(null);
+          document.getElementById("selection-state").textContent = "Fuera del límite";
+        }
+        requestDraw();
+      });
+
+      document.getElementById("zoom-in").addEventListener("click", () => zoomAt(view.zoom * 1.4));
+      document.getElementById("zoom-out").addEventListener("click", () => zoomAt(view.zoom / 1.4));
+      document.getElementById("reset-view").addEventListener("click", () => {
+        view.ra = 0;
+        view.dec = 0;
+        view.zoom = 1;
+        constellationFilter = "";
+        setSelectedStar(null);
+        ui.constellationSelect.value = "";
+        ui.searchInput.value = "";
+        ui.searchMessage.textContent = "";
+        ui.coordinateMessage.textContent = "";
+        updateReadout();
+        showToast("Vista de cielo completo restablecida.");
+      });
+      document.getElementById("fullscreen").addEventListener("click", async () => {
+        try {
+          if (document.fullscreenElement) await document.exitFullscreen();
+          else await mapArea.requestFullscreen();
+        } catch (error) {
+          showToast("Pantalla completa no disponible: " + error.message);
+        }
+      });
+
+      canvas.addEventListener("wheel", (event) => {
+        event.preventDefault();
+        const rect = canvas.getBoundingClientRect();
+        zoomAt(view.zoom * (event.deltaY < 0 ? 1.18 : 1 / 1.18), event.clientX - rect.left, event.clientY - rect.top);
+      }, { passive: false });
+      canvas.addEventListener("pointerdown", (event) => {
+        pointer.down = true;
+        pointer.dragged = false;
+        pointer.x = pointer.lastX = event.clientX;
+        pointer.y = pointer.lastY = event.clientY;
+        canvas.classList.add("dragging");
+        canvas.setPointerCapture(event.pointerId);
+      });
+      canvas.addEventListener("pointermove", (event) => {
+        if (!pointer.down) return;
+        const dx = event.clientX - pointer.lastX;
+        const dy = event.clientY - pointer.lastY;
+        if (Math.hypot(event.clientX - pointer.x, event.clientY - pointer.y) > 4) pointer.dragged = true;
+        const scale = pixelsPerDegree();
+        view.ra = wrapHours(view.ra + dx / scale / 15);
+        view.dec = Math.max(-90, Math.min(90, view.dec - dy / scale));
+        pointer.lastX = event.clientX;
+        pointer.lastY = event.clientY;
+        requestDraw();
+      });
+      canvas.addEventListener("pointerup", (event) => {
+        if (!pointer.down) return;
+        pointer.down = false;
+        canvas.classList.remove("dragging");
+        if (!pointer.dragged) {
+          const rect = canvas.getBoundingClientRect();
+          selectNearest(event.clientX - rect.left, event.clientY - rect.top);
+        }
+      });
+      canvas.addEventListener("pointercancel", () => {
+        pointer.down = false;
+        canvas.classList.remove("dragging");
+      });
+      canvas.addEventListener("keydown", (event) => {
+        if (event.key === "+" || event.key === "=") zoomAt(view.zoom * 1.25);
+        else if (event.key === "-" || event.key === "_") zoomAt(view.zoom / 1.25);
+        else if (event.key.startsWith("Arrow")) {
+          event.preventDefault();
+          const shift = event.shiftKey ? 3 : 1;
+          if (event.key === "ArrowLeft") view.ra = wrapHours(view.ra - 6 / view.zoom * shift);
+          if (event.key === "ArrowRight") view.ra = wrapHours(view.ra + 6 / view.zoom * shift);
+          if (event.key === "ArrowUp") view.dec = Math.min(90, view.dec - 6 / view.zoom * shift);
+          if (event.key === "ArrowDown") view.dec = Math.max(-90, view.dec + 6 / view.zoom * shift);
+          requestDraw();
+        }
+      });
+      window.addEventListener("resize", () => {
+        resizeCanvas();
+        requestDraw();
+      }, { passive: true });
+
+      resizeCanvas();
+      updateReadout();
+      requestDraw();
+      loadCatalog();
+    })();
+  </script>
+</body>
+</html>
